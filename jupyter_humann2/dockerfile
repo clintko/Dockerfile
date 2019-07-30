@@ -1,0 +1,75 @@
+FROM jupyter_rpy32
+MAINTAINER clintko
+USER root
+WORKDIR /home
+
+### ====================================
+### Install LinuxBrewer
+### https://docs.brew.sh/Homebrew-on-Linux
+### ====================================
+#RUN git clone https://github.com/Homebrew/brew /home/.linuxbrew/Homebrew && \
+#    mkdir /home/.linuxbrew/bin  && \
+#    ln -s /home/.linuxbrew/Homebrew/bin/brew /home/.linuxbrew/bin
+
+
+### ====================================
+### Install HUMAnN2 and metaphlan2 using LinuxBrewer
+### ====================================
+# add brew to system path
+#ENV PATH="/home/.linuxbrew/bin:${PATH}"
+
+# Error when "brew install metaphlan2"
+#     python2 -c import setuptools... --no-user-cfg install --prefix=/root/.linuxbrew/Cellar/metaphlan2
+#     ...
+#     fatal error: xlocale.h: No such file or directory ---> #include <xlocale.h>
+# Solution (https://github.com/agracio/electron-edge-js/issues/16)
+#     the announcement of the removal of locale in August 2017
+#         The nonstandard header <xlocale.h> has been removed. Most programs shoulduse <locale.h> instead.
+#     ===> the issue was in the naming of the header
+#RUN ln -s /usr/include/locale.h /usr/include/xlocale.h
+
+#RUN brew tap biobakery/biobakery
+#RUN brew install humann2
+#RUN brew install metaphlan2
+
+
+### ====================================
+### Install metaphlan2 from source
+### ====================================
+
+# install manager
+RUN apt-get update \
+	&& apt-get install -y mercurial
+
+# clone down metaphlan2
+RUN cd /home && hg clone https://bitbucket.org/biobakery/metaphlan2
+
+# add metaphlan2 to path
+ARG MDIR="/home/metaphlan2"
+ENV PATH=$MDIR:$MDIR/utils/:$PATH
+
+
+### ====================================
+### Install HUMAnN2 using pip
+### ====================================
+# Install dependencies
+RUN pip3 install BioPython biom-format
+
+# Install HUMAnN2
+RUN pip3 install HUMAnN2
+
+# Demo database: default to ChocoPhlAn for the former and UniRef90 for the latter
+# for the purposes of this tutorial alone, you will download demo databases to reduce run time
+RUN cd /home && \
+    humann2_databases --download chocophlan DEMO humann2_database_downloads && \
+    humann2_databases --download uniref DEMO_diamond humann2_database_downloads
+
+### ====================================
+### Project files and Tutorial Demo files
+### ====================================
+
+# Clone down the project repo and copy example data
+CMD cd /home && \
+    git clone https://github.com/clintko/Proj_microbiome.git && \
+    cp -r /home/Proj_microbiome/examples /home/humann2_examples/ && \
+    jupyter lab --allow-root --ip 0.0.0.0 --no-browser

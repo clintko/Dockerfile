@@ -1,0 +1,273 @@
+# Modified from cchorn/Docker_SPARC + jupyter/base-notebook + rocker/r-ver
+# Link:
+#     cchorn/Docker_SPARC (https://github.com/cchorn/Docker_SPARC)
+#     jupyter/base-notebook (https://hub.docker.com/r/jupyter/base-notebook/dockerfile)
+#     rocker/r-ver (https://hub.docker.com/r/rocker/r-ver/dockerfile)
+
+FROM ubuntu:18.04
+MAINTAINER Clintko
+USER root
+
+### =================================
+### Basic OS tools
+### =================================
+# Install all OS dependencies for notebook server that starts but lacks all
+# features (e.g., download as all possible file formats)
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update && apt-get -yq dist-upgrade \
+ && apt-get install -yq --no-install-recommends \
+    apt-utils \
+    wget \
+    bzip2 \
+    ca-certificates \
+    sudo \
+    locales \
+    fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
+
+# Added by clintko: apt-utils, build-essential, lsb, pciutils
+# lspci (pciutils) for checking NVIDIA)
+# lsb_release (from lsb-release) for checking the system
+# build-essential for gcc, g++, etc
+RUN apt-get update && \
+    apt-get install -yq \
+    build-essential \
+    lsb-core \
+    lsb-release \
+    pciutils \
+ && rm -rf /var/lib/apt/lists/*
+
+ RUN apt-get update && \
+     apt-get install -yq \
+     htop \
+     less \
+     make \
+     git \
+     openssh-server \
+     openssh-client \
+     ssh \
+     vim \
+     jed \
+     emacs \
+     xclip \
+     unzip \
+     libsm6 \
+     pandoc \
+     pkg-config \
+     texlive-latex-base \
+     texlive-latex-extra \
+     texlive-fonts-extra \
+     texlive-fonts-recommended \
+     texlive-generic-recommended \
+     texlive-xetex \
+     libxrender1 \
+     inkscape \
+     rsync \
+     gzip \
+     tar \
+     curl \
+     file \
+   && apt-get clean \
+   && rm -rf /var/lib/apt/lists/*
+
+ # Fix add-apt-repository: command not found error
+ # https://itsfoss.com/add-apt-repository-command-not-found/
+ RUN apt-get update && \
+     apt-get install -yq \
+     software-properties-common \
+     apt-transport-https
+
+# R pre-requisites
+# from jupyter/datascience-notebook
+# https://hub.docker.com/r/jupyter/datascience-notebook/dockerfile
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    fonts-dejavu \
+    gfortran \
+    gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+# R tidyverse pre-requisites
+# - Error: Configuration failed because libcurl was not found
+#     https://stackoverflow.com/questions/42115972/configuration-failed-because-libcurl-was-not-found/42117480
+# - Error: dependencies ‘xml2’, ‘httr’ are not available for package ‘rvest’
+#     https://stackoverflow.com/questions/31008877/unable-to-install-rvest-package
+#     https://community.rstudio.com/t/cant-install-tidyverse/29293
+# - Notice: ./configure: line 7019: /usr/bin/file: No such file or directory
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    file \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    xml2 \
+    libxml2-dev \
+    unixodbc-dev
+
+# Other pre-requisites
+# from rocker/tidyverse (https://hub.docker.com/r/rocker/tidyverse/dockerfile)
+RUN apt-get update -qq && apt-get -y --no-install-recommends install \
+    libcairo2-dev \
+    libsqlite-dev \
+    libmariadbd-dev \
+    libmariadb-client-lgpl-dev \
+    libpq-dev \
+    libssh2-1-dev
+
+### =================================
+### Configure environment
+### =================================
+
+# Set language
+RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
+    locale-gen
+
+# Configure environment
+ENV SHELL=/bin/bash \
+    Notebook_USER=jovyan \
+    LC_ALL=en_US.UTF-8 \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US.UTF-8
+
+# create working directory
+RUN mkdir -p /home/work
+
+### =================================
+### Install R
+### =================================
+
+# install R on Ubuntu from CRAN website
+RUN echo "deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/" >> /etc/apt/sources.list
+RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E298A3A825C0D65DFD57CBB651716619E084DAB9
+
+# Now install R and littler, and create a link for littler in /usr/local/bin
+# script getting from https://hub.docker.com/r/rocker/r-base/dockerfile
+ENV R_BASE_VERSION 3.6.0
+RUN apt-get update \
+	&& apt-get install -yq --no-install-recommends \
+         littler \
+         r-cran-littler \
+		     r-base=${R_BASE_VERSION}-* \
+		     r-base-dev=${R_BASE_VERSION}-* \
+		     r-recommended=${R_BASE_VERSION}-* \
+	&& ln -s /usr/lib/R/site-library/littler/examples/install.r /usr/local/bin/install.r \
+	&& ln -s /usr/lib/R/site-library/littler/examples/install2.r /usr/local/bin/install2.r \
+	&& ln -s /usr/lib/R/site-library/littler/examples/installGithub.r /usr/local/bin/installGithub.r \
+	&& ln -s /usr/lib/R/site-library/littler/examples/testInstalled.r /usr/local/bin/testInstalled.r \
+	&& rm -rf /tmp/downloaded_packages/ /tmp/*.rds \
+	&& rm -rf /var/lib/apt/lists/*
+
+# set install2.r: required littler and docopt (littler is installed above)
+RUN Rscript -e "install.packages('docopt', repos = 'https://cloud.r-project.org/')"
+
+# install R packages: tidyverse
+# from rocker/tidyverse
+RUN install2.r --error \
+    --deps TRUE \
+    tidyverse \
+    devtools \
+    formatR \
+    remotes \
+    selectr \
+    BiocManager
+
+# additional packages
+RUN Rscript -e "install.packages(c('rmarkdown', 'crayon', 'hexbin'),     repos = 'https://cloud.r-project.org/')"
+RUN Rscript -e "install.packages(c('forecast', 'caret', 'randomforest'), repos = 'https://cloud.r-project.org/')"
+RUN Rscript -e "install.packages(c('nycflights13', 'RSQLite'),           repos = 'https://cloud.r-project.org/')"
+RUN Rscript -e "install.packages( \
+                pkgs = c('ROCR','mvtnorm','pheatmap','formatR', 'dendextend', 'rentrez'), \
+                repos='https://cran.revolutionanalytics.com/', \
+                dependencies=TRUE)"
+
+# Bioconductor
+RUN Rscript -e "BiocManager::install()"
+RUN Rscript -e "BiocManager::install('Biostrings')"
+
+
+### =================================
+### Install Python 3 packages
+### =================================
+
+# Install python3 and pip package manager
+RUN apt-get update \
+  && apt-get install -y python3-pip python3-dev \
+  && cd /usr/local/bin \
+  && ln -s /usr/bin/python3 python \
+  && pip3 install --upgrade pip
+
+# Install python3 packages
+RUN pip3 install jupyter jupyterlab pandas numpy matplotlib h5py ggplot jupyter_contrib_nbextensions ipywidgets scipy notedown statsmodels seaborn plotly bokeh scikit-image scikit-learn sympy jupytext altair vega_datasets simplegeneric rpy2
+RUN pip3 install numba cython
+
+
+### =================================
+### Install Python 2 packages
+### =================================
+
+# Install python 2.7 and pip package manager ... an apt-get update is needed to configure the package manager
+RUN apt-get update && \
+    apt-get install -y python2.7 python-pip
+RUN sudo -H pip2 install --upgrade pip
+
+# Install python2 packages ... (only neo 0.5.2 will import Spike2 files)
+# Error when installing rpy2
+#     rpy2 is no longer supporting Python < 3.Consider using an older rpy2 release when using an older Python release
+# Solution:
+#     don't install it (i have tried older version ex: rpy2=2.8.5 of rpy2=2.8.6 but none of them worked)
+RUN pip install pandas numpy matplotlib h5py ggplot scipy statsmodels seaborn ipykernel pybursts plotly jupytext
+RUN pip install numba cython
+
+
+### =================================
+### Install Jupyter lab extensions
+### =================================
+
+# Install nodejs for Jupyter lab extensions
+# https://github.com/nodesource/distributions
+RUN curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
+RUN sudo apt-get install -y nodejs
+
+# Install yarn
+RUN npm install -g yarn
+
+# Install Jupyterlab extensions, commment out those not currently supported
+RUN jupyter labextension install @jupyterlab/toc @jupyterlab/github
+#RUN jupyter labextension install @jupyterlab/toc @jupyterlab/google-drive @jupyterlab/celltags jupyterlab_bokeh @jupyterlab/github qgrid @jupyter-widgets/jupyterlab-manager @jupyterlab/xkcd-extension @jupyterlab/git @jupyterlab/geojson-extension @jupyterlab/plotly-extension @mflevine/jupyterlab_html plotlywidget jupyterlab-drawio
+
+
+### =================================
+### Set Kernel & Configure Jupyter notebook
+### =================================
+RUN jupyter notebook --generate-config && \
+    ipython profile create
+
+# TextFileContentsManager is needed to jupytext
+RUN echo "c.NotebookApp.open_browser = False" >>/root/.jupyter/jupyter_notebook_config.py && \
+    echo "c.InteractiveShellApp.matplotlib = 'inline'" >>/root/.ipython/profile_default/ipython_config.py
+    #echo "c.NotebookApp.contents_manager_class = 'jupytext.TextFileContentsManager'" >>/root/.jupyter/jupyter_notebook_config.py
+
+# add bash kernel for the user jovyan
+RUN pip3 install bash_kernel
+RUN python3 -m bash_kernel.install
+
+# install notebook kernel for Python 2.7
+RUN python2 -m pip install ipykernel
+RUN python2 -m ipykernel install --user
+
+# set R kernel in jupyter
+# https://irkernel.github.io/installation/
+RUN Rscript -e "install.packages('IRkernel', repos = 'https://cloud.r-project.org/', verbose = FALSE)"
+RUN Rscript -e "IRkernel::installspec(user = FALSE)"
+
+# Run the Jupyter lab .. comment the first command because it is only for the notebook
+CMD jupyter lab --allow-root --ip 0.0.0.0 --no-browser
+
+
+### =================================
+### directories and ports
+### =================================
+WORKDIR /home
+RUN pwd
+
+# Expose port to host
+EXPOSE 8888
