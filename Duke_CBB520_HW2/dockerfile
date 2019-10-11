@@ -1,0 +1,113 @@
+FROM jupyter_rstudio
+LABEL maintainer="clintko"
+USER root
+
+### ========================================
+### linux tools
+### Installation of SRA toolkit
+### ========================================
+USER root
+
+# install fastq-mcf and fastq-multx from source since apt-get install causes problems
+RUN wget https://github.com/ExpressionAnalysis/ea-utils/archive/1.04.807.tar.gz && \
+	tar -zxf 1.04.807.tar.gz &&  \
+    cd ea-utils-1.04.807/clipper &&  \
+    make fastq-mcf fastq-multx &&  \
+    cp fastq-mcf fastq-multx /usr/bin
+
+### Install SRA-toolkit
+RUN wget https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/2.10.0/setup-apt.sh
+RUN chmod +x setup-apt.sh
+RUN ./setup-apt.sh
+RUN echo 'source /etc/profile.d/sra-tools.sh' >> $HOME/.bashrc
+### NOTE:
+### From the docker builder reference, each RUN command is run independently. 
+### So doing RUN source /usr/local/rvm/scripts/rvm does not have any effect on 
+### the next RUN command.
+### https://stackoverflow.com/questions/40044810/linux-source-command-not-working-when-building-dockerfile/40045004
+#RUN /bin/bash -c "source /etc/profile.d/sra-tools.sh"
+#RUN ["/bin/bash", "-c", "source /etc/profile.d/sra-tools.sh"]
+
+# try CMD, but I think the command is replace when calling /bin/bash using docker run
+# https://aws.amazon.com/blogs/opensource/demystifying-entrypoint-cmd-docker/
+#CMD ["/bin/bash", "-c", "source /etc/profile.d/sra-tools.sh"]
+
+# try ENTRYPOINT but the /bin/bash does not work any more
+#ENTRYPOINT  ["/bin/bash", "-c", "source /etc/profile.d/sra-tools.sh"]
+
+### ========================================
+### linux tools
+### Tutorial: How to Install SamTools, HTSLib, and BCFTools on Ubuntu 18.04
+### ========================================
+USER root
+
+### Install Updates and Required Packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    fastqc default-jre \
+    libbz2-dev \
+    zlib1g-dev \
+    libncurses5-dev \
+    libncursesw5-dev \
+    liblzma-dev \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+### Install HTSLIB
+RUN wget https://github.com/samtools/htslib/releases/download/1.9/htslib-1.9.tar.bz2
+RUN tar -vxjf htslib-1.9.tar.bz2 -C /usr/bin
+RUN make -C /usr/bin/htslib-1.9
+
+### Install SAMTOOLS
+RUN wget https://github.com/samtools/samtools/releases/download/1.9/samtools-1.9.tar.bz2
+RUN tar -vxjf samtools-1.9.tar.bz2 -C /usr/bin
+RUN make -C /usr/bin/samtools-1.9
+
+### Install BCFTools
+RUN wget https://github.com/samtools/bcftools/releases/download/1.9/bcftools-1.9.tar.bz2
+RUN tar -vxjf bcftools-1.9.tar.bz2 -C /usr/bin
+RUN make -C /usr/bin/bcftools-1.9
+
+### Install BWA
+RUN cd $HOME
+RUN git clone https://github.com/lh3/bwa.git /usr/bin/bwa
+RUN make -C /usr/bin/bwa
+
+### Export To Path And Refresh
+#RUN export PATH="$PATH:/usr/bin/bcftools-1.9"
+#RUN export PATH="$PATH:/usr/bin/samtools-1.9"
+#RUN export PATH="$PATH:/usr/bin/htslib-1.9"
+#RUN source ~/.profile
+ENV PATH="/usr/bin/bcftools-1.9:${PATH}"
+ENV PATH="/usr/bin/samtools-1.9:${PATH}"
+ENV PATH="/usr/bin/htslib-1.9:${PATH}"
+ENV PATH="/usr/bin/bwa:${PATH}"
+
+### RUN Example of bwa
+#RUN bwa index ref.fa
+#RUN bwa mem ref.fa read-se.fq.gz | gzip -3 > aln-se.sam.gz
+#RUN bwa mem ref.fa read1.fq read2.fq | gzip -3 > aln-pe.sam.gz
+
+### ========================================
+### python packages
+### ========================================
+USER $NB_UID
+
+RUN pip install biopython multiqc pysam
+
+### ========================================
+### other tools
+### ========================================
+USER root
+
+### perl XML::LibXML
+### reason: error occur when using "prefetch": Can't locate XML/LibXML.pm
+RUN cpan install XML::LibXML
+
+
+### ====================
+### Configuration
+### ====================
+USER root
+
+USER $NB_UID 
