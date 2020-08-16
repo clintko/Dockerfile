@@ -1,10 +1,6 @@
 FROM rocker/rstudio
 MAINTAINER clintko
 
-USER root
-
 RUN apt-get update
 RUN mkdir data
 RUN mkdir work
-
-USER rstudio
