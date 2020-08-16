@@ -5,7 +5,7 @@ LABEL MAINTAINER="clintko"
 USER root
 
 RUN apt-get update
-RUN mkdir /home/rstudio/data
-RUN mkdir /home/rstudio/work
+RUN mkdir -p /home/rstudio/data
+RUN mkdir -p /home/rstudio/work
 
 USER rstudio
