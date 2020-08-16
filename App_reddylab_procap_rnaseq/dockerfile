@@ -1,11 +1,9 @@
-FROM rocker/rstudio
+FROM rocker/shiny-verse
 LABEL MAINTAINER="clintko"
 
-
-USER root
-
 RUN apt-get update
-RUN mkdir -p /home/rstudio/data
-RUN mkdir -p /home/rstudio/work
-
-USER rstudio
+RUN apt-get update -qq && install2.r --error \
+    --deps TRUE \
+    vroom \
+    flexdashboard \
+    && rm -rf /tmp/downloaded_packages
